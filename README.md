@@ -2,12 +2,12 @@
 
 -- *Here include the abstract* --
 
-In this repository we provide the code of GEPMTR base method, as well as of three ensemble-based methods EGEPMTR-B, EGEPMTR-OTA, and EGEPMTR-S. GEPMTR has been implemented using Mulan [[Tso11]](#Tso11), and Weka [[Hal09]](#Hal09) libraries.
+In this repository we provide the code of GEPMTR method, as well as of three ensemble-based methods EGEPMTR-B, EGEPMTR-OTA, and EGEPMTR-S. GEPMTR has been implemented using Mulan [[Tso11]](#Tso11), and Weka [[Hal09]](#Hal09) libraries.
 
-The distribution in packages of the sorce code is done as follows:
-* ensemble: ensemble methods based on GEPMTR.
-* experiments: classes to execute the different methods.
-* gep: classes for the base GEPMTR method.
+The distribution in packages of the source code is as follows:
+* ensemble: ensemble methods comprising members based on GEPMTR.
+* experiments: main classes to execute the different methods.
+* gep: code base for the GEPMTR method.
 * utils: classes with many utilities.
 
 More information about these algorithms can be find in the following article:
