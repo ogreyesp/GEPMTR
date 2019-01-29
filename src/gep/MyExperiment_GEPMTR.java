@@ -10,7 +10,7 @@ import mulan.evaluation.Evaluator;
 import mulan.evaluation.MultipleEvaluation;
 import weka.core.Utils;
 
-public class MyExperiment {
+public class MyExperiment_GEPMTR {
 
 	public static void main(String args[]) {
 
@@ -52,7 +52,7 @@ public class MyExperiment {
 
 						//GEPMTLR learner= new GEPMTLR(h, numberOfIndividuals, numberOfGenerations);
 						
-						RAkELMTR learner= new RAkELMTR(gep);
+						//RAkELMTR learner= new RAkELMTR(gep);
 
 						//EnsembleOfGEPMTR learner = new EnsembleOfGEPMTR(h, numberOfIndividuals, numberOfGenerations, q,
 							//	EnsembleOfGEPMTR.SamplingMethod.WithReplacement);
@@ -65,7 +65,7 @@ public class MyExperiment {
 
 						int numFolds = 10;
 
-						results = eval.crossValidate(learner, full, numFolds);
+						results = eval.crossValidate(gep, full, numFolds);
 
 						String pT = path + "-exec" + execution;
 
@@ -73,7 +73,7 @@ public class MyExperiment {
 
 						PrintWriter writer = new PrintWriter(new File(pT));
 
-						writer.println(learner.toString());
+						writer.println(gep.toString());
 						writer.println();
 						writer.println("Results");
 						writer.println("//////////////");
