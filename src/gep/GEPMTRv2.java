@@ -107,6 +107,9 @@ public class GEPMTRv2 extends MultiLabelLearnerBase {
 	private Chromosome bestChromosome;
 	
 	private int tournamentSize = 2;
+	
+	// Seed for random numbers
+	protected long seed;
 
 	/**
 	 * @param h
@@ -133,12 +136,46 @@ public class GEPMTRv2 extends MultiLabelLearnerBase {
 		this.t = h * (arity - 1) + 1;
 
 		this.lengthGene = h + t;
+		
+		this.seed = 1;
 	}
 
+	/**
+	 * @param h
+	 *            Length of the head in the genes
+	 * 
+	 * @param ni
+	 *            number of individuals
+	 * 
+	 * @param q
+	 *            number of targets
+	 * 
+	 * @param d
+	 *            number of input variable
+	 * 
+	 * @param seed
+	 *            seed for random numbers
+	 *            
+	 */
+	public GEPMTRv2(int h, int numberOfIndividuals, int numberGenerations, long seed) {
+
+		this.numberOfIndividuals = numberOfIndividuals;
+
+		this.numberGenerations = numberGenerations;
+
+		this.h = h;
+
+		this.t = h * (arity - 1) + 1;
+
+		this.lengthGene = h + t;
+		
+		this.seed = seed;
+	}
+	
 	@Override
 	protected void buildInternal(MultiLabelInstances trainingSet) throws Exception {
 		
-		this.rand = new Random();
+		this.rand = new Random(seed);
 		
 		this.dataset = trainingSet.getDataSet();
 
