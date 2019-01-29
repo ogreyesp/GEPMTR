@@ -1,4 +1,5 @@
 package gep;
+import ensemble.RAkELMTR;
 import mulan.classifier.InvalidDataException;
 import mulan.classifier.MultiLabelLearner;
 import mulan.classifier.MultiLabelOutput;

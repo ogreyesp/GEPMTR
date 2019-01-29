@@ -1,4 +1,4 @@
-package gep;
+package ensemble;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -9,7 +9,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import Utils.WriteReadFromFile;
+import gep.GEPMTRv2;
 import mulan.classifier.InvalidDataException;
 import mulan.classifier.MultiLabelLearnerBase;
 import mulan.classifier.MultiLabelOutput;
@@ -17,6 +17,7 @@ import mulan.data.InvalidDataFormatException;
 import mulan.data.LabelsMetaData;
 import mulan.data.LabelsMetaDataImpl;
 import mulan.data.MultiLabelInstances;
+import utils.WriteReadFromFile;
 import weka.core.Instance;
 import weka.core.Instances;
 import weka.core.TechnicalInformation;
@@ -40,7 +41,7 @@ import weka.core.Utils;
  * @author Oscar Gabriel Reyes Pupo
  *
  */
-public class EGEPMTR_OTA extends MultiLabelLearnerBase {
+public class EGEPMTR_S extends MultiLabelLearnerBase {
 
 	/**
 	 * 
@@ -57,7 +58,13 @@ public class EGEPMTR_OTA extends MultiLabelLearnerBase {
 	
 	protected int numberOfModels;
 	
+	protected int k;
+	
 	Random rand;
+	
+	byte [][] subsetsMatrix;
+	
+	int [] votesPerLabel;
 
 	// Full targets regressor
 	public GEPMTRv2 fullTargetsRegressor;
@@ -80,8 +87,9 @@ public class EGEPMTR_OTA extends MultiLabelLearnerBase {
 	 *            number of input variable
 	 * 
 	 */
-	public EGEPMTR_OTA(int h, int numIndividuals, int numGenerations, int seed) {
+	public EGEPMTR_S(int h, int k, int numIndividuals, int numGenerations, int seed) {
 		this.h = h;
+		this.k = k;
 		this.numberOfIndividuals = numIndividuals;
 		this.numberGenerations = numGenerations;
 		this.seed = seed;
@@ -95,17 +103,57 @@ public class EGEPMTR_OTA extends MultiLabelLearnerBase {
 		
 		this.rand = new Random(seed);
 		
+		int avgExpectedVotes = 6;
 		numLabels = trainingSet.getNumLabels();
-		numberOfModels = numLabels + 1;
+//		numberOfModels = numLabels + 1;
+		numberOfModels = (int)Math.ceil((avgExpectedVotes / (double)k) * numLabels) + 1;
+//		System.out.println(numberOfModels);
+		
+		votesPerLabel = new int[numLabels];
+		
+		subsetsMatrix = new byte[numberOfModels-1][numLabels];
 		
 		fullTargetsRegressor = new GEPMTRv2(h, numberGenerations, numberOfIndividuals, seed);
 		fullTargetsRegressor.build(trainingSet);
 		
-		ensemble = new GEPMTRv2[numLabels];
-		for(int n=0; n<numLabels; n++){
-			ensemble[n] = new GEPMTRv2(h, numberGenerations, numberOfIndividuals, seed*n);
-			ensemble[n].build(transformInstances(trainingSet, n));
+		for(int i=0; i<numLabels; i++){
+			votesPerLabel[i] = 1;
 		}
+		
+		ensemble = new GEPMTRv2[numberOfModels-1];
+		for(int n=0; n<(numberOfModels-1); n++){
+			//Select random subset
+			byte [] subset = selectRandomSubset(k, numLabels);
+			System.arraycopy(subset, 0, subsetsMatrix[n], 0, numLabels);
+			
+			//Update votesPerLabel
+			for(int i=0; i<numLabels; i++){
+				if(subset[i] == 1){
+					votesPerLabel[i]++;
+				}
+			}
+			
+			//Generate ensemble member
+			ensemble[n] = new GEPMTRv2(h, numberGenerations, numberOfIndividuals, seed*n);
+			ensemble[n].build(transformInstances(trainingSet, subsetsMatrix[n]));
+		}
+	}
+	
+	protected byte [] selectRandomSubset(int k, int numLabels){
+		byte [] subset = new byte[numLabels];
+		
+		int i=0;
+		int r;
+		
+		while(i < k){
+			r = rand.nextInt(numLabels);
+			if(subset[r] == 0){
+				subset[r] = 1;
+				i++;
+			}
+		}
+		
+		return subset;
 	}
 
 	@Override
@@ -117,19 +165,19 @@ public class EGEPMTR_OTA extends MultiLabelLearnerBase {
 		System.arraycopy(mlo.getPvalues(), 0, finalPredictions, 0, numLabels);
 		
 		Instance modifiedInst = transformInstance(instance);
-		for(int n=0; n<numLabels; n++){
+		for(int n=0; n<(numberOfModels-1); n++){
 			mlo = ensemble[n].makePrediction(modifiedInst);
 
 			for (int label=0, k=0; label < numLabels; label++) {   
-				if(label != n) {	
-		        	finalPredictions[label] += mlo.getPvalues()[k];
+				if(subsetsMatrix[n][label] == 1){
+					finalPredictions[label] += mlo.getPvalues()[k];
 		            k++;
-		        }
+				}
 		    }
 		}
 		
 		for(int n=0; n<numLabels; n++){
-			finalPredictions[n] /= (numLabels);
+			finalPredictions[n] /= ((double)votesPerLabel[n]);
 		}
 		
 		MultiLabelOutput finalMLO = new MultiLabelOutput(finalPredictions, true);
@@ -137,14 +185,19 @@ public class EGEPMTR_OTA extends MultiLabelLearnerBase {
 	}
 	
 	
-	protected MultiLabelInstances transformInstances(MultiLabelInstances mlData, int label) 
+	protected MultiLabelInstances transformInstances(MultiLabelInstances mlData, byte [] subset) 
 			throws InvalidDataFormatException{
 		
 		labelNames = mlData.getLabelNames();
 		
 		//Get current LabelsMetaData
 		LabelsMetaDataImpl lMeta = (LabelsMetaDataImpl) mlData.getLabelsMetaData().clone();
-		lMeta.removeLabelNode(labelNames[label]);
+		
+		for(int i=0; i<subset.length; i++){
+			if(subset[i] == 0){
+				lMeta.removeLabelNode(labelNames[i]);
+			}
+		}
 
 		MultiLabelInstances transformed = new MultiLabelInstances(mlData.clone().getDataSet(), lMeta);
 		
@@ -220,6 +273,7 @@ public class EGEPMTR_OTA extends MultiLabelLearnerBase {
 		str.append("Number of individuals:" + numberOfIndividuals).append("\n");
 		str.append("Number of generations:" + numberGenerations).append("\n");
 		str.append("Length of the head of genes:" + h).append("\n");
+		str.append("Subset size:" + k).append("\n");
 		str.append("Number of models:" + numberOfModels).append("\n");
 
 		return str.toString();

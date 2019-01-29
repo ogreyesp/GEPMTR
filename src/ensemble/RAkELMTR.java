@@ -1,8 +1,10 @@
-package gep;
+package ensemble;
 
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Random;
+
+import gep.GEPMTRv2;
 import mulan.classifier.MultiLabelLearner;
 import mulan.classifier.MultiLabelOutput;
 import mulan.classifier.meta.MultiLabelMetaLearner;

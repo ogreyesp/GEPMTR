@@ -1,5 +1,8 @@
-package gep;
+package ensemble;
 import java.util.Random;
+
+import gep.GEPMTR;
+import gep.GEPMTRv2;
 import mulan.classifier.InvalidDataException;
 import mulan.classifier.MultiLabelLearnerBase;
 import mulan.classifier.MultiLabelOutput;
@@ -16,7 +19,7 @@ import weka.filters.unsupervised.instance.Resample;
  * 
  * Oscar Gabriel Reyes Pupo
  */
-public class EGEPMTR_B extends MultiLabelLearnerBase {
+public class EnsembleOfGEPMTR extends MultiLabelLearnerBase {
 
 	private static final long serialVersionUID = 1L;
 
@@ -60,8 +63,6 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 	private int numberOfIndividuals;
 
 	private int numberOfGenerations;
-	
-	private long seed;
 
 	/**
 	 * Constructor.
@@ -75,7 +76,7 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 	 * @throws Exception
 	 *             Potential exception thrown. To be handled in an upper level.
 	 */
-	public EGEPMTR_B(int h, int numberOfIndividuals, int numberGenerations, int numOfModels, SamplingMethod sampling)
+	public EnsembleOfGEPMTR(int h, int numberOfIndividuals, int numberGenerations, int numOfModels, SamplingMethod sampling)
 			throws Exception {
 
 		this.h = h;
@@ -87,28 +88,13 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 
 		ensemble = new GEPMTRv2[numOfModels];
 	}
-	
-	public EGEPMTR_B(int h, int numberOfIndividuals, int numberGenerations, int numOfModels)
-			throws Exception {
-
-		this.h = h;
-		this.numberOfIndividuals = numberOfIndividuals;
-		this.numberOfGenerations = numberGenerations;
-
-		this.sampling = SamplingMethod.WithReplacement;
-		this.numOfModels = numOfModels;
-
-		ensemble = new GEPMTRv2[numOfModels];
-	}
-	
-	public void setSeed(long seed){
-		this.seed = seed;
-	}
 
 	@Override
 	protected void buildInternal(MultiLabelInstances mlTrainSet) throws Exception {
 
-		Random rand = new Random(seed);
+		// this random number generator will be used for taking random samples
+		// and creating random chains
+		Random rand = new Random();
 
 		for (int i = 0; i < numOfModels; i++) {
 
@@ -140,7 +126,7 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 				sampledTrainingSet = mlTrainSet;
 			}
 
-			ensemble[i] = new GEPMTRv2(h, numberOfIndividuals, numberOfGenerations, seed*i);
+			ensemble[i] = new GEPMTRv2(h, numberOfIndividuals, numberOfGenerations);
 
 			ensemble[i].build(sampledTrainingSet);
 		}
