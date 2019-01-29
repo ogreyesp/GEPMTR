@@ -21,7 +21,7 @@ public class MyExperiment_GEPMTR {
 			ArrayList<String> datasets = file.read("configuration/datasets.cfg");
 			HashMap<String, int[]> hRanges = file.getRange("configuration/h.cfg");
 
-			int numberOfExecutions = 10;
+			int numberOfExecutions = 1;
 			int numberOfIndividuals = 50;
 			int numberOfGenerations = 100;
 
