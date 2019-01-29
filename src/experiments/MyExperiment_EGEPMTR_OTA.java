@@ -1,4 +1,4 @@
-package gep;
+package experiments;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -7,11 +7,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
-import Utils.WriteReadFromFile;
+import ensemble.EGEPMTR_OTA;
 import mulan.data.InvalidDataFormatException;
 import mulan.data.MultiLabelInstances;
 import mulan.evaluation.Evaluator;
 import mulan.evaluation.MultipleEvaluation;
+import utils.WriteReadFromFile;
 import weka.core.Utils;
 
 public class MyExperiment_EGEPMTR_OTA {
