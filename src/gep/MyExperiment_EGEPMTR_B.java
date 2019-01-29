@@ -14,14 +14,13 @@ import mulan.evaluation.Evaluator;
 import mulan.evaluation.MultipleEvaluation;
 import weka.core.Utils;
 
-public class MyExperiment_EGEPMTR_OTA {
+public class MyExperiment_EGEPMTR_B {
 
 	public static void main(String args[]) {
 
 		try {
 
 			WriteReadFromFile file = new WriteReadFromFile();
-
 
 			ArrayList<String> datasets = file.read("configuration/datasets.cfg");
 			HashMap<String, int[]> hRanges = file.getRange("configuration/h.cfg");
@@ -57,9 +56,8 @@ public class MyExperiment_EGEPMTR_OTA {
 				}
 				
 				System.out.println("bestH: " + bestH);
-				
-				
-				FileWriter writerGeneral = new FileWriter(new File("results/" + data + "/GEPMTR/general-result"), true);
+
+				FileWriter writerGeneral = new FileWriter(new File("results/" + data + "/EB_MAD/general-result"), true);
 				writerGeneral.write("--------------------\n");
 				writerGeneral.flush();
 				writerGeneral.close();
@@ -70,18 +68,19 @@ public class MyExperiment_EGEPMTR_OTA {
 		}
 	}
 	
-	public static double[] runExperimentForH(int h, int numberOfExecutions, int numberOfIndividuals, int numberOfGenerations, int q, String data, WriteReadFromFile file, double bestRelRMSE) throws InvalidDataFormatException, IOException{
+	public static double[] runExperimentForH(int h, int numberOfExecutions, int numberOfIndividuals, int numberOfGenerations, int q, String data, WriteReadFromFile file, double bestRelRMSE) throws Exception{
 		double means[] = new double[numberOfExecutions];
 		double devs[] = new double[numberOfExecutions];
 		double times[] = new double[numberOfExecutions];
 
-		String path = "results/" + data + "/GEPMTR/h" + h;
+		String path = "results/" + data + "/EB_MAD/h" + h;
 
 		for (int execution = 0; execution < numberOfExecutions; execution++) {
 			int seed = execution*10;
 			
 			// Constructing the classifier
-			EGEPMTR_OTA gep = new EGEPMTR_OTA(h, numberOfIndividuals,numberOfGenerations, seed);
+			EGEPMTR_B egep = new EGEPMTR_B(h, numberOfIndividuals,numberOfGenerations, 10);
+			egep.setSeed(seed);
 
 			MultiLabelInstances full = new MultiLabelInstances(
 					"datasets/" + data + ".arff", q);
@@ -90,10 +89,10 @@ public class MyExperiment_EGEPMTR_OTA {
 			eval.setSeed(seed);
 			MultipleEvaluation results = null;
 
-			int numFolds = 5;
+			int numFolds = 10;
 
 			long time_init = System.currentTimeMillis();
-			results = eval.crossValidate(gep, full, numFolds);
+			results = eval.crossValidate(egep, full, numFolds);
 			long time_end = System.currentTimeMillis();
 			times[execution] = ((double)(time_end - time_init)) / numberOfExecutions;
 			
@@ -103,7 +102,7 @@ public class MyExperiment_EGEPMTR_OTA {
 
 			PrintWriter writer = new PrintWriter(new File(pT));
 
-			writer.println(gep.toString());
+			writer.println(egep.toString());
 			writer.println();
 			writer.println("Results");
 			writer.println("//////////////");
@@ -145,7 +144,7 @@ public class MyExperiment_EGEPMTR_OTA {
 		writer.flush();
 		writer.close();
 		
-		FileWriter writerGeneral = new FileWriter(new File("results/" + data + "/GEPMTR/general-result"), true);
+		FileWriter writerGeneral = new FileWriter(new File("results/" + data + "/EB_MAD/general-result"), true);
 		writerGeneral.write("h = " + h + " ; " + "Macro RelRMSE: " + m + "\u00B1" + d + " ; " + "AvgTime(ms): " + avgTime + "\n");
 		writerGeneral.flush();
 		writerGeneral.close();
