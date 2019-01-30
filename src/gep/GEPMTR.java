@@ -1,12 +1,11 @@
 package gep;
 import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.HashMap;
 import java.util.Random;
+import java.util.Stack;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
 import mulan.classifier.InvalidDataException;
 import mulan.classifier.MultiLabelLearnerBase;
 import mulan.classifier.MultiLabelOutput;
@@ -14,9 +13,22 @@ import mulan.data.MultiLabelInstances;
 import weka.core.Instance;
 import weka.core.Instances;
 import weka.core.TechnicalInformation;
+import weka.core.Utils;
 
 /**
- * Gene Expression Programming for Multi-target Regression
+ * Gene Expression Programming for Multi-target Regression.
+ * 
+ * En esta version consideramos los genes como notaciones prefijas (notacion
+ * polaca). Como cada gen tiene una notacion polaca almacenada entonces la
+ * evaluacion de un gen puede ser mucho mas rapida que construyendo primero un
+ * arbol de expresion y despues evaluar ese arbol. La complejidad computacional
+ * respecto a la evaluacion de los individuos se reduce considerablemente.
+ * 
+ * Esta idea fue propuesta en el articulo:
+ * 
+ * Peng, Y., Yuan, C., Qin, X., Huang, J., & Shi, Y. (2014). An improved Gene
+ * Expression Programming approach for symbolic regression problems.
+ * Neurocomputing, 137, 293–301.
  * 
  * @author Oscar Gabriel Reyes Pupo
  *
@@ -25,93 +37,79 @@ public class GEPMTR extends MultiLabelLearnerBase {
 
 	private static final long serialVersionUID = 1L;
 
-	public enum SelectionType {
-		Roulette, Tournament
-	};
-
-	SelectionType selection = SelectionType.Tournament;
-
 	// Set of functions
-	String F[] = new String[] { "-", "/", "+", "*", "sroot", "sin", "cos", "log" };
+	private String F[] = new String[] {"-", "/", "+", "*", "sroot", "sin","cos","log"};
 
 	// Arity of the functions
-	int arities[] = new int[] { 2, 2, 2, 2, 1, 1, 1, 1 };
+	private int arities[] = new int[] {2, 2, 2, 2, 1, 1, 1, 1};
 
-	int numberOfIndividuals;
+	private int numberOfIndividuals;
 
 	// Population
-	Chromosome[] population;
+	private Chromosome[] population;
 
 	// to generate random numbers
-	Random rand;
+	private Random rand;
 
-	// number of elements in the head
-	int h;
+	// the length of the head
+	private int h;
 
-	// the lenght of the tail
-	int t;
+	// the length of the tail
+	private int t;
 
 	// length of a gene
-	int lengthGene;
+	private int lengthGene;
 
-	int arity = 2;
+	private int arity = 2;
 
-	Instances dataset;
+	private Instances dataset;
 
-	int numberGenerations = 100;
+	private int numberGenerations = 100;
 
-	// Computing the mean value of each target variable
-	double[] yMeans;
+	// To store the mating pool
+	private Chromosome[] matingPool;
 
-	// To store the parents selected
-	Chromosome[] parents;
+	// Typically, a mutation rate equivalent to two mutation points per
+	// chromosome is used. The probability of mutation is commonly low;
+	private double pm = 0.1;
 
-	// Typically, a mutation rate equivalent to two point mutations per
-	// chromosome is used.
-	// The probability of mutation is commonly low;
-	double pm = 0.1;
+	// The number of mutation points per chromosome
+	private int numberMutationPoints = 2;
 
-	int numberMutationPoints = 2;
-
-	// IS transposition rate (pis) of 0.1 and a set of three IS elements of
-	// different length are used.
-	double pis = 0.1;
+	// IS transposition rate
+	private double pis = 0.1;
 
 	// Maximum IS elements length
-	int maximumISElementLength = 3;
+	private int maximumISElementLength = 3;
 
 	// Number of IS elements of different lengths
-	int numberISElements = 3;
+	private int numberISElements = 3;
 
-	// Typically a root transposition rate (pris) of 0.1 and a set of three RIs
-	// elements of different sizes are used.
-	double pris = 0.1;
+	// Root transposition rate
+	private double pris = 0.1;
 
-	// Number of IS elements of different lengths
-	int numberRISElements = 3;
+	// Number of RIs elements of different lengths
+	private int numberRISElements = 3;
 
 	// Gene transposition rate.
-	double pgt = 0.1;
+	private double pgt = 0.1;
 
 	// One point recombination rate
-	double por = 0.2;
+	private double por = 0.2;
 
-	// One point recombination rate
-	double ptr = 0.5;
+	// Two point recombination rate
+	private double ptr = 0.5;
 
 	// Gene recombination rate
-	double pgr = 0.1;
+	private double pgr = 0.1;
 
-	// Store the best parent in the last generation
-	int bestparent;
-
-	// Store the best offspring in the new generation
-	int bestOffspring;
-
-	// Store the worst offspring in the new generation
-	int worstOffspring;
-
-	// ensures that best individual passes to the next generation any time
+	// The best chromosome composed by the best genes found across generations
+	private Chromosome bestChromosome;
+	
+	private int tournamentSize = 2;
+	
+	// Seed for random numbers
+	protected long seed;
 
 	/**
 	 * @param h
@@ -137,104 +135,333 @@ public class GEPMTR extends MultiLabelLearnerBase {
 
 		this.t = h * (arity - 1) + 1;
 
-		lengthGene = h + t;
+		this.lengthGene = h + t;
+		
+		this.seed = 1;
 	}
 
+	/**
+	 * @param h
+	 *            Length of the head in the genes
+	 * 
+	 * @param ni
+	 *            number of individuals
+	 * 
+	 * @param q
+	 *            number of targets
+	 * 
+	 * @param d
+	 *            number of input variable
+	 * 
+	 * @param seed
+	 *            seed for random numbers
+	 *            
+	 */
+	public GEPMTR(int h, int numberOfIndividuals, int numberGenerations, long seed) {
+
+		this.numberOfIndividuals = numberOfIndividuals;
+
+		this.numberGenerations = numberGenerations;
+
+		this.h = h;
+
+		this.t = h * (arity - 1) + 1;
+
+		this.lengthGene = h + t;
+		
+		this.seed = seed;
+	}
+	
+	@Override
+	protected void buildInternal(MultiLabelInstances trainingSet) throws Exception {
+		
+		this.rand = new Random(seed);
+		
+		this.dataset = trainingSet.getDataSet();
+
+		// Create the initial population
+		createInitialPopulation();
+
+		// evaluate the initial population
+		doEvaluation(population);
+
+		// do generations
+		int iter = 0;
+
+		while (iter < numberGenerations) {
+
+			// Selection
+			doSelection();
+
+			// Mutation
+			doMutation();
+
+			// Transposition.
+			// The transposable elements of GEP are fragments of the genome that
+			// can be activated and jump to another place in the chromosome.
+			doISTransposition();
+			doRISTransposition();
+
+			// Gene Transposition operator can only be used in multi-genic
+			// chromosomes
+			if (numLabels > 1)
+				doGeneTransposition();
+
+			// Recombination
+			doOnePointRecombination();
+			doTwoPointRecombination();
+
+			// Gene Recombination operator can only be used in multi-genic
+			// chromosomes
+			if (numLabels > 1)
+				doGeneRecombination();
+
+			doEvaluation(matingPool);
+
+			// Prepare new individuals for next generation
+			doReplacement();
+
+			iter++;
+		}
+	}
+
+	@Override
+	protected MultiLabelOutput makePredictionInternal(Instance instance) throws Exception, InvalidDataException {
+
+		// the values predicted
+		double[] finalPredictions = new double[numLabels];
+
+		// for each gene
+		for (int l = 0; l < numLabels; l++) {
+
+			// copy gene
+			int gene[] = new int[lengthGene];
+
+			System.arraycopy(bestChromosome.chromo, l * lengthGene, gene, 0, lengthGene);
+
+			finalPredictions[l] = evaluate(gene, instance);
+
+		}
+
+		MultiLabelOutput mlo = new MultiLabelOutput(finalPredictions, true);
+		return mlo;
+
+	}
+
+	// This method creates an initial population. It tries that the individuals
+	// will be not similar between each other, guaranteeing the diversity in the
+	// initial population. It tries that each gene will be very dissimilar to
+	// the exiting ones.
 	public void createInitialPopulation() {
 
 		population = new Chromosome[numberOfIndividuals];
 
 		int d = dataset.numAttributes() - numLabels;
 
-		for (int i = 0; i < numberOfIndividuals; i++) {
-			population[i] = new Chromosome(arity, h, numLabels, F.length, d, rand);
+		int nCurrent = 0;
+
+		while (nCurrent < numberOfIndividuals) {
+
+			// generate a chromosome
+			Chromosome c = new Chromosome(h, t, numLabels, F.length, d, rand);
+
+			boolean check = true;
+
+			for (int i = 0; i < numberOfIndividuals; i++) {
+
+				// check the similarity
+				if (population[i] != null) {
+
+					double similarity = similarity(c, population[i]);
+
+					if (similarity > 0.2) {
+
+						//System.out.println("Individual not diverse");
+						check = false;
+						break;
+					}
+				} else
+					break;
+			}
+
+			if (check) {
+				population[nCurrent++] = c.copy();
+			}
 		}
 	}
 
 	private void doSelection() {
 
-		if (selection == SelectionType.Roulette)
-			doRouletteSelection();
-
-		if (selection == SelectionType.Tournament)
-			doTournamentSelection();
-
+		doTournamentSelectionCluster();
 	}
 
-	private void doRouletteSelection() {
+	/*
+	 * private void doTournamentSelectionWithTokenCompetition() {
+	 * 
+	 * int currentSelection = 0;
+	 * 
+	 * parents = new Chromosome[numberOfIndividuals];
+	 * 
+	 * // the 5% of the population is selected int tournamentSize = (int) (0.05
+	 * * numberOfIndividuals);
+	 * 
+	 * while (currentSelection < numberOfIndividuals) {
+	 * 
+	 * // the parents are selected ArrayList<Integer> selection = new
+	 * ArrayList<Integer>();
+	 * 
+	 * while (selection.size() < tournamentSize) {
+	 * 
+	 * int sel = rand.nextInt(numberOfIndividuals);
+	 * 
+	 * while (selection.contains(sel)) sel = rand.nextInt(numberOfIndividuals);
+	 * 
+	 * selection.add(sel);
+	 * 
+	 * }
+	 * 
+	 * // to store the number of tokens wined in each comparison int[]
+	 * numberOfTokensWined = new int[tournamentSize];
+	 * 
+	 * // compare pair of parents for (int i = 0; i < tournamentSize - 1; i++) {
+	 * 
+	 * Chromosome c1 = population[selection.get(i)];
+	 * 
+	 * for (int j = i + 1; j < tournamentSize; j++) {
+	 * 
+	 * Chromosome c2 = population[selection.get(j)];
+	 * 
+	 * int numberTokens = 0;
+	 * 
+	 * // for each token for (int l = 0; l < numLabels; l++) { if (c1.fitness[l]
+	 * <= c2.fitness[l]) numberTokens++; }
+	 * 
+	 * numberOfTokensWined[i] += numberTokens; numberOfTokensWined[j] +=
+	 * numLabels - numberTokens; } }
+	 * 
+	 * int maxIndex = Utils.maxIndex(numberOfTokensWined);
+	 * 
+	 * // put the winner in the next population parents[currentSelection++] =
+	 * population[selection.get(maxIndex)].copy(); } }
+	 */
 
-		// prepareSelection()
-		double[] roulette = new double[numberOfIndividuals];
+	/**
+	 * We perform a tournament with replacement. The process is repeated until
+	 * the mating pool is filled. This is quite remarkable and says that binary
+	 * tournament selection and linear ranking selection are identical in
+	 * expectation
+	 * 
+	 * The selection pressure of tournament selection directly varies with the
+	 * tournament size- the more competitors, the higher the resulting selection
+	 * pressure. Tournament selection pressure is increased (decreased) by
+	 * simply increasing (decreasing) the tournament size.
+	 * 
+	 * The selection pressure is the degree to which the better individuals are
+	 * favored: the higher the selection pressure, the more the better
+	 * individuals are favored
+	 * 
+	 * With higher selection pressures resulting in higher convergence rates. If
+	 * the selection pressure is low, the convergence rate will be slow, and the
+	 * GA will take longer to find the optimal solution.
+	 * 
+	 * Increased selection pressure can be provided by simply increasing the
+	 * tournament size, as the winner from a large tournament will, on average,
+	 * have a higher fitness than the winner of a smaller tournament.
+	 */
+	/*
+	 * private void doTournamentSelection() {
+	 * 
+	 * int currentSelection = 0;
+	 * 
+	 * parents = new Chromosome[numberOfIndividuals];
+	 * 
+	 * // the 5% of the population is selected int tournamentSize = (int) (0.05
+	 * * numberOfIndividuals);
+	 * 
+	 * tournamentSize = 2;
+	 * 
+	 * while (currentSelection < numberOfIndividuals) {
+	 * 
+	 * // the parents are selected ArrayList<Integer> selection = new
+	 * ArrayList<Integer>();
+	 * 
+	 * while (selection.size() < tournamentSize) {
+	 * 
+	 * int sel = rand.nextInt(numberOfIndividuals); selection.add(sel); }
+	 * 
+	 * int indexBest = -1; double bestFitness = Double.MAX_VALUE;
+	 * 
+	 * for (int i = 0; i < tournamentSize; i++) { if
+	 * (population[selection.get(i)].globalFitness < bestFitness) { bestFitness
+	 * = population[selection.get(i)].globalFitness; indexBest = i; } }
+	 * 
+	 * // put the winner in the next population parents[currentSelection++] =
+	 * population[selection.get(indexBest)].copy(); } }
+	 */
 
-		// Sets roulette values
-		double acc = 0.0;
-		int idx = 0;
+	/**
+	 * Based on the paper: H. Xie and M. Zhang, Tuning selection Pressure in
+	 * Tournament Selection.
+	 */
+	private void doTournamentSelectionCluster() {
 
-		for (Chromosome c : population) {
-			acc += 1 / c.globalFitness; // to convert the fitness to maximum
-			roulette[idx++] = acc;
+		// create the FRD (fitness rank distribution)
+		// The clusters are formed by individuals that have the same fitness
+		// value
+
+		HashMap<Double, ArrayList<Integer>> frd = new HashMap<Double, ArrayList<Integer>>();
+
+		for (int i = 0; i < numberOfIndividuals; i++) {
+
+			double g = population[i].globalFitness;
+
+			// If the key does not exist
+			if (!frd.containsKey(g)) {
+
+				ArrayList<Integer> cluster = new ArrayList<Integer>();
+				cluster.add(i);
+
+				frd.put(g, cluster);
+
+			} else { // the key already exists
+				frd.get(g).add(i);
+			}
 		}
-
-		// Normalize roulette values
-		for (; idx > 0;) {
-			if (acc != 0)
-				roulette[--idx] /= acc;
-			else
-				--idx;
-		}
-
-		// a population of equal size of the current is select.
-		// Thus, during replication the genomes of the selected individuals are
-		// copied as many times as the outcome of the roulette. The roulette is
-		// spun as
-		// many times as there are individuals in the population, always
-		// maintaining the same population size.
+// 
+		// This variable stores the clusters index (fitness values in our case)
+		ArrayList<Double> clusters = new ArrayList<Double>(frd.keySet());
 
 		int currentSelection = 0;
 
-		parents = new Chromosome[numberOfIndividuals];
+		// The mating pool is created
+		matingPool = new Chromosome[numberOfIndividuals];
 
 		while (currentSelection < numberOfIndividuals) {
 
-			// Generate a random number
+			int indexBest= rand.nextInt(clusters.size());
+			double bestFitness = clusters.get(indexBest);
+			
+			// Select the winner cluster from the tournament using fitness
+			// values
 
-			double p = rand.nextDouble();
-
-			for (int i = 0; i < numberOfIndividuals; i++) {
-				if (p < roulette[i]) {
-					parents[currentSelection] = population[i].copy();
-					break;
+			for (int i = 1; i < tournamentSize; i++) {
+				
+				int competitor= rand.nextInt(clusters.size());
+				
+				if (clusters.get(competitor) < bestFitness) {
+					bestFitness = clusters.get(competitor);
+					indexBest = competitor;
 				}
 			}
 
-			currentSelection++;
-		}
+			// Return an individual randomly chosen from the winning cluster
 
-	}
+			ArrayList<Integer> clusterWinner = frd.get(clusters.get(indexBest));
 
-	private void doTournamentSelection() {
+			int winner = clusterWinner.get(rand.nextInt(clusterWinner.size()));
 
-		int currentSelection = 0;
-
-		parents = new Chromosome[numberOfIndividuals];
-
-		int tournamentSize = 2;
-
-		while (currentSelection < numberOfIndividuals) {
-
-			// Randomly selected individual
-			Chromosome winner = population[rand.nextInt(numberOfIndividuals)];
-
-			// Performs tournament
-			for (int j = 1; j < tournamentSize; j++) {
-
-				Chromosome opponent = population[rand.nextInt(numberOfIndividuals)];
-
-				if (winner.globalFitness > opponent.globalFitness)
-					winner = opponent;
-			}
-
-			parents[currentSelection++] = winner.copy();
+			// put the winner in the next population
+			matingPool[currentSelection++] = population[winner].copy();
 		}
 	}
 
@@ -242,196 +469,208 @@ public class GEPMTR extends MultiLabelLearnerBase {
 
 		int d = dataset.numAttributes() - numLabels;
 
-		for (Chromosome chromosome : parents) {
+		ArrayList<Integer> parentsSelected = prepareSelection(pm);
 
-			// to perform mutation with certain probability
-			double p = rand.nextDouble();
+		for (int indexParent : parentsSelected) {
 
-			// do mutation
-			if (p < pm) {
+			Chromosome chromosome = matingPool[indexParent];
 
-				for (int i = 0; i < numberMutationPoints; i++) {
-					// the gene is selected
-					int index = rand.nextInt(numLabels);
+			for (int i = 0; i < numberMutationPoints; i++) {
+				// the gene is selected
+				int index = rand.nextInt(numLabels);
 
-					int begin = index * lengthGene;
+				int begin = index * lengthGene;
 
-					int pos = rand.nextInt(lengthGene);
+				int pos = rand.nextInt(lengthGene);
 
-					// determining is the mutation will be in head or tail
-					if (pos < h) {
-						// the root can only change for a function
-						if (pos == 0)
-							chromosome.chromo[begin] = rand.nextInt(F.length);
-						else {
-							// a coin is launched. The probability of being a
-							// terminal or a function is equal.
-							int coin = rand.nextInt(2);
+				// determining is the mutation will be in the head or the
+				// tail
+				if (pos < h) {
+					// the root can only change for a function
+					if (pos == 0)
+						chromosome.chromo[begin] = rand.nextInt(F.length);
+					else {
+						// a coin is launched. The probability of being a
+						// terminal or a function is equal.
+						int coin = rand.nextInt(2);
 
-							if (coin == 0)
-								chromosome.chromo[begin + pos] = rand.nextInt(F.length);
-							else
-								chromosome.chromo[begin + pos] = F.length + rand.nextInt(d);
-						}
-
-					} else { // in the tails terminals can only change into
-								// terminals
-						chromosome.chromo[begin + pos] = rand.nextInt(d);
+						if (coin == 0)
+							chromosome.chromo[begin + pos] = rand.nextInt(F.length);
+						else
+							chromosome.chromo[begin + pos] = F.length + rand.nextInt(d);
 					}
+
+				} else { // in the tails terminals can only change to
+							// terminals
+					chromosome.chromo[begin + pos] = rand.nextInt(d);
 				}
 			}
 		}
-
 	}
+
+	// Short fragments with a function or terminal in the first position are
+	// transposed to the head of genes, except to the root (insertion sequence
+	// elements or IS elements).
 
 	// Despite this insertion, the structural organization of chromosomes is
 	// maintained, and therefore all newly created individuals are syntactically
 	// correct programs. A copy of the transposon is made and inserted at any
 	// position in the head of a gene, except at the start position.
+
+	// Transposition can drastically reshape the ET, and the more upstream the
+	// insertion site the more profound the change.
+
 	private void doISTransposition() {
 
-		for (Chromosome cro : parents) {
+		ArrayList<Integer> parentsSelected = prepareSelection(pis);
 
-			double p = rand.nextDouble();
+		for (int indexParent : parentsSelected) {
 
-			// do IS transposition
-			if (p < pis) {
+			Chromosome cro = matingPool[indexParent];
 
-				// During transposition, the sequence upstream from the
-				// insertion site stays unchanged, whereas the sequence
-				// downstream from the copied IS element loses, at the end of
-				// the head, as many symbols as the length of the IS element
+			// During transposition, the sequence upstream from the
+			// insertion site stays unchanged, whereas the sequence
+			// downstream from the copied IS element loses, at the end of
+			// the head, as many symbols as the length of the IS element
 
-				for (int i = 0; i < numberISElements; i++) {
+			for (int i = 0; i < numberISElements; i++) {
 
-					int lenIS = 1 + rand.nextInt(maximumISElementLength);
+				int lenIS = 1 + rand.nextInt(maximumISElementLength);
 
-					int pos = rand.nextInt(lengthGene);
+				int pos = rand.nextInt(lengthGene);
 
-					if ((pos + 1) >= lenIS)
-						pos -= (lenIS - 1);
+				if ((pos + 1) >= lenIS)
+					pos -= (lenIS - 1);
 
-					// The IS element will always be between [pos,pos+lenIS]
+				// The IS element will always be between [pos,pos+lenIS]
 
-					// select source gene
-					int sourceGene = rand.nextInt(numLabels);
+				// select source gene
+				int sourceGene = rand.nextInt(numLabels);
 
-					// select target gene
-					int targetGene = rand.nextInt(numLabels);
+				// select target gene
+				int targetGene = rand.nextInt(numLabels);
 
-					// Copy the IS element
-					int[] isElement = new int[lenIS];
+				// Copy the IS element
+				int[] isElement = new int[lenIS];
 
-					System.arraycopy(cro.chromo, sourceGene * lengthGene + pos, isElement, 0, lenIS);
+				System.arraycopy(cro.chromo, sourceGene * lengthGene + pos, isElement, 0, lenIS);
 
-					// Copy the head of the target gene
-					int[] targetHead = new int[h];
+				// Copy the head of the target gene
+				int[] targetHead = new int[h];
 
-					System.arraycopy(cro.chromo, targetGene * lengthGene, targetHead, 0, h);
+				System.arraycopy(cro.chromo, targetGene * lengthGene, targetHead, 0, h);
 
-					// A copy of the transposon is made and inserted at any
-					// position in the head of a gene, except at the start
-					// position
+				// A copy of the transposon is made and inserted at any
+				// position in the head of a gene, except at the start
+				// position
 
-					// A number between 1 and h-1 is generated
-					int posTarget = 1 + rand.nextInt(h - 1);
+				// A number between 1 and h-1 is generated
+				int posTarget = 1 + rand.nextInt(h - 1);
 
-					int cantElementToMove = h - posTarget;
+				int cantElementToMove = h - posTarget;
 
-					if (cantElementToMove < lenIS)
-						lenIS = cantElementToMove;
+				if (cantElementToMove < lenIS)
+					lenIS = cantElementToMove;
 
-					int copyDownStream[] = new int[cantElementToMove];
+				int copyDownStream[] = new int[cantElementToMove];
 
-					System.arraycopy(targetHead, posTarget, copyDownStream, 0, cantElementToMove);
+				System.arraycopy(targetHead, posTarget, copyDownStream, 0, cantElementToMove);
 
-					// copy the IS element in targetHead
-					System.arraycopy(isElement, 0, targetHead, posTarget, lenIS);
+				// copy the IS element in targetHead
+				System.arraycopy(isElement, 0, targetHead, posTarget, lenIS);
 
-					if (h > (posTarget + lenIS)) {
+				if (h > (posTarget + lenIS)) {
 
-						cantElementToMove = h - (posTarget + lenIS);
+					cantElementToMove = h - (posTarget + lenIS);
 
-						// move the down strean
-						System.arraycopy(copyDownStream, 0, targetHead, posTarget + lenIS, cantElementToMove);
-
-					}
-
-					// copy the target head into the original chromosome
-					System.arraycopy(targetHead, 0, cro.chromo, targetGene * lengthGene, h);
+					// move the down stream
+					System.arraycopy(copyDownStream, 0, targetHead, posTarget + lenIS, cantElementToMove);
 
 				}
+
+				// copy the target head into the original chromosome
+				System.arraycopy(targetHead, 0, cro.chromo, targetGene * lengthGene, h);
 
 			}
 		}
 	}
 
+	// All RIS elements start with a function, and thus are chosen among the
+	// sequences of the heads.
+
 	// Despite this insertion, the structural organization of chromosomes is
 	// maintained, and therefore all newly created individuals are syntactically
 	// correct programs.
 
+	// The modifications caused by root transposition are extremely radical,
+	// because the root itself is modified. Like mutation and IS transposition,
+	// root insertion
+	// has a tremendous transforming power and is excellent for creating genetic
+	// variation.
+
 	private void doRISTransposition() {
 
-		for (Chromosome cro : parents) {
+		ArrayList<Integer> parentsSelected = prepareSelection(pris);
 
-			double p = rand.nextDouble();
+		for (int indexParent : parentsSelected) {
 
-			// do RIS transposition
-			if (p < pris) {
+			Chromosome cro = matingPool[indexParent];
 
-				for (int i = 0; i < numberRISElements; i++) {
+			for (int i = 0; i < numberRISElements; i++) {
 
-					// Select the RIS element
+				// Select the RIS element
 
-					// All RIS elements start with a function, and thus are
-					// chosen among the sequences of the heads.
-					// For that, a point is randomly chosen in the head and the
-					// gene is scanned downstream until a
-					// function is found. This function becomes the start
-					// position of the RIS element. If no functions
-					// are found, it does nothing.
+				// All RIS elements start with a function, and thus are
+				// chosen among the sequences of the heads.
+				// For that, a point is randomly chosen in the head and the
+				// gene is scanned downstream until a
+				// function is found. This function becomes the start
+				// position of the RIS element. If no functions
+				// are found, it does nothing.
 
-					// select source gene
-					int sourceGene = rand.nextInt(numLabels);
+				// select source gene
+				int sourceGene = rand.nextInt(numLabels);
 
-					// Copy the head of the target gene
-					int[] targetHead = new int[h];
+				// Copy the head of the target gene
+				int[] targetHead = new int[h];
 
-					System.arraycopy(cro.chromo, sourceGene * lengthGene, targetHead, 0, h);
+				System.arraycopy(cro.chromo, sourceGene * lengthGene, targetHead, 0, h);
 
-					// a point is randomly chosen in the head
-					int posBegin = rand.nextInt(h);
+				// a point is randomly chosen in the head
+				int posBegin = rand.nextInt(h);
 
-					int posEnd = posBegin;
-					// the gene is scanned downstream until a
-					// function is found
-					while (targetHead[posBegin] >= F.length) {
-						if (posBegin == 0)
-							break;
-						posBegin--;
-					}
+				int posEnd = posBegin;
 
-					// The RIS element is the range [posBegin,posEnd]
-					// Copy the RIS element
-					int lenghtRISElement = posEnd - posBegin + 1;
-					int[] risElement = new int[lenghtRISElement];
+				// the gene is scanned downstream until a
+				// function is found
 
-					System.arraycopy(targetHead, posBegin, risElement, 0, lenghtRISElement);
+				while (targetHead[posBegin] >= F.length) {
 
-					int[] copyDowmStream = new int[h];
+					if (posBegin == 0)
+						break;
 
-					System.arraycopy(targetHead, 0, copyDowmStream, 0, h);
-
-					// Copy the RIS element in the root of the head
-					System.arraycopy(risElement, 0, targetHead, 0, lenghtRISElement);
-
-					// Move the rest of head
-					System.arraycopy(copyDowmStream, 0, targetHead, lenghtRISElement, h - lenghtRISElement);
-
-					// copy the target head into the original chromosome
-					System.arraycopy(targetHead, 0, cro.chromo, sourceGene * lengthGene, h);
-
+					posBegin--;
 				}
+
+				// The RIS element is in the range [posBegin,posEnd]
+				// Copy the RIS element
+				int lenghtRISElement = posEnd - posBegin + 1;
+				int[] risElement = new int[lenghtRISElement];
+
+				System.arraycopy(targetHead, posBegin, risElement, 0, lenghtRISElement);
+
+				int[] copyDowmStream = new int[h];
+
+				System.arraycopy(targetHead, 0, copyDowmStream, 0, h);
+
+				// Copy the RIS element in the root of the head
+				System.arraycopy(risElement, 0, targetHead, 0, lenghtRISElement);
+
+				// Move the rest of head
+				System.arraycopy(copyDowmStream, 0, targetHead, lenghtRISElement, h - lenghtRISElement);
+
+				// copy the target head into the original chromosome
+				System.arraycopy(targetHead, 0, cro.chromo, sourceGene * lengthGene, h);
 
 			}
 		}
@@ -445,60 +684,49 @@ public class GEPMTR extends MultiLabelLearnerBase {
 
 	private void doGeneTransposition() {
 
-		for (Chromosome cro : parents) {
+		ArrayList<Integer> parentsSelected = prepareSelection(pgt);
 
-			double p = rand.nextDouble();
+		for (int indexParent : parentsSelected) {
 
-			// do gene transposition
-			if (p < pgt) {
+			Chromosome cro = matingPool[indexParent];
 
-				// The chromosome to undergo gene transposition is randomly
-				// chosen, and one of its genes (except the first)
-				// is randomly chosen to transpose.
+			// The chromosome to undergo gene transposition is randomly
+			// chosen, and one of its genes (except the first)
+			// is randomly chosen to transpose.
 
-				int geneSource = 1 + rand.nextInt(numLabels - 1);
+			int geneSource = 1 + rand.nextInt(numLabels - 1);
 
-				int[] chromoCopy = new int[cro.chromo.length];
+			int[] chromoCopy = new int[cro.chromo.length];
 
-				// the copy of the first gene
-				System.arraycopy(cro.chromo, geneSource * lengthGene, chromoCopy, 0, lengthGene);
+			// the copy of the first gene
+			System.arraycopy(cro.chromo, geneSource * lengthGene, chromoCopy, 0, lengthGene);
 
-				// Copy the rest of the genes in the same order, except the gene
-				// that was already copied.
+			// Copy the rest of the genes in the same order, except the gene
+			// that was already copied.
 
-				int index = 1;
+			int index = 1;
 
-				for (int l = 0; l < numLabels; l++) {
+			for (int l = 0; l < numLabels; l++) {
 
-					if (l == geneSource)
-						continue;
+				if (l == geneSource)
+					continue;
 
-					System.arraycopy(cro.chromo, l * lengthGene, chromoCopy, index * lengthGene, lengthGene);
+				System.arraycopy(cro.chromo, l * lengthGene, chromoCopy, index * lengthGene, lengthGene);
 
-					index++;
-
-				}
-
-				// Copy the chromosome to the original
-				System.arraycopy(chromoCopy, 0, cro.chromo, 0, chromoCopy.length);
+				index++;
 			}
+
+			// Copy the chromosome to the original
+			System.arraycopy(chromoCopy, 0, cro.chromo, 0, chromoCopy.length);
 		}
 	}
 
 	// Two parent chromosomes are randomly chosen and paired to exchange some
 	// material between them. During one-point recombination, the chromosomes
-	// cross over a randomly chosen point to form two daughter chromosomes.
+	// cross over a randomly chosen point to form two chromosomes.
 	private void doOnePointRecombination() {
 
-		ArrayList<Integer> parentsSelected = new ArrayList<Integer>();
-
-		for (int i = 0; i < numberOfIndividuals; i++) {
-
-			double p = rand.nextDouble();
-			// participate in the recombination with certain probability
-			if (p < por)
-				parentsSelected.add(i);
-		}
+		ArrayList<Integer> parentsSelected = prepareSelection(por);
 
 		// check if a even number of parents were selected, otherwise remove the
 		// last
@@ -518,21 +746,21 @@ public class GEPMTR extends MultiLabelLearnerBase {
 			// A point between 1..length-2
 			int point = 1 + rand.nextInt((lengthGene * numLabels) - 1);
 
-			System.arraycopy(parents[posFirst].chromo, 0, chromoFirst, 0, point);
-			System.arraycopy(parents[posSecond].chromo, point, chromoFirst, point, lengthGene * numLabels - point);
+			System.arraycopy(matingPool[posFirst].chromo, 0, chromoFirst, 0, point);
+			System.arraycopy(matingPool[posSecond].chromo, point, chromoFirst, point, lengthGene * numLabels - point);
 
-			System.arraycopy(parents[posSecond].chromo, 0, chromoSecond, 0, point);
-			System.arraycopy(parents[posFirst].chromo, point, chromoSecond, point, lengthGene * numLabels - point);
+			System.arraycopy(matingPool[posSecond].chromo, 0, chromoSecond, 0, point);
+			System.arraycopy(matingPool[posFirst].chromo, point, chromoSecond, point, lengthGene * numLabels - point);
 
-			parents[posFirst].chromo = chromoFirst;
-			parents[posSecond].chromo = chromoSecond;
+			matingPool[posFirst].chromo = chromoFirst;
+			matingPool[posSecond].chromo = chromoSecond;
 		}
 	}
 
 	// Two parent chromosomes are randomly chosen and paired to exchange some
 	// material between them. In two-point recombination the chromosomes are
 	// paired and the two points of recombination are randomly chosen. The
-	// material between the recombination points is afterwards ex- changed
+	// material between the recombination points is afterwards exchanged
 	// between the two chromosomes, forming two new daughter chromosomes.
 
 	// The transforming power of two point recombination is greater than
@@ -542,15 +770,7 @@ public class GEPMTR extends MultiLabelLearnerBase {
 
 	private void doTwoPointRecombination() {
 
-		ArrayList<Integer> parentsSelected = new ArrayList<Integer>();
-
-		for (int i = 0; i < numberOfIndividuals; i++) {
-
-			double p = rand.nextDouble();
-			// participate in the recombination with certain probability
-			if (p < ptr)
-				parentsSelected.add(i);
-		}
+		ArrayList<Integer> parentsSelected = prepareSelection(ptr);
 
 		// check if a even number of parents were selected, otherwise remove the
 		// last
@@ -568,21 +788,23 @@ public class GEPMTR extends MultiLabelLearnerBase {
 			int chromoFirst[] = new int[lengthGene * numLabels];
 			int chromoSecond[] = new int[lengthGene * numLabels];
 
+			// pointOne will be in the range [1...n-2]
 			int pointOne = 1 + rand.nextInt((lengthGene * numLabels) - 2);
+			// pointTwo will be in the range [point+1...n-1]
 			int pointTwo = pointOne + 1 + rand.nextInt((lengthGene * numLabels) - pointOne - 1);
 
 			// A complete copy
-			System.arraycopy(parents[posFirst].chromo, 0, chromoFirst, 0, lengthGene * numLabels);
+			System.arraycopy(matingPool[posFirst].chromo, 0, chromoFirst, 0, lengthGene * numLabels);
 			// A copy of the range
-			System.arraycopy(parents[posSecond].chromo, pointOne, chromoFirst, pointOne, pointTwo - pointOne);
+			System.arraycopy(matingPool[posSecond].chromo, pointOne, chromoFirst, pointOne, (pointTwo - pointOne) + 1);
 
 			// A complete copy
-			System.arraycopy(parents[posSecond].chromo, 0, chromoSecond, 0, lengthGene * numLabels);
+			System.arraycopy(matingPool[posSecond].chromo, 0, chromoSecond, 0, lengthGene * numLabels);
 			// A copy of the range
-			System.arraycopy(parents[posFirst].chromo, pointOne, chromoSecond, pointOne, pointTwo - pointOne);
+			System.arraycopy(matingPool[posFirst].chromo, pointOne, chromoSecond, pointOne, (pointTwo - pointOne) + 1);
 
-			parents[posFirst].chromo = chromoFirst;
-			parents[posSecond].chromo = chromoSecond;
+			matingPool[posFirst].chromo = chromoFirst;
+			matingPool[posSecond].chromo = chromoSecond;
 		}
 	}
 
@@ -598,21 +820,13 @@ public class GEPMTR extends MultiLabelLearnerBase {
 
 	// It is worth noting that this operator is unable to create new genes. In
 	// fact, when gene recombination is used as the unique source of genetic
-	// variation, more complex prob- lems can only be solved using very large
+	// variation, more complex problems can only be solved using very large
 	// initial populations in order to provide for the necessary diversity of
 	// genes.
 
 	private void doGeneRecombination() {
 
-		ArrayList<Integer> parentsSelected = new ArrayList<Integer>();
-
-		for (int i = 0; i < numberOfIndividuals; i++) {
-
-			double p = rand.nextDouble();
-			// participate in the recombination with certain probability
-			if (p < por)
-				parentsSelected.add(i);
-		}
+		ArrayList<Integer> parentsSelected = prepareSelection(pgr);
 
 		// check if a even number of parents were selected, otherwise remove the
 		// last
@@ -634,44 +848,52 @@ public class GEPMTR extends MultiLabelLearnerBase {
 
 			int[] geneCopy = new int[lengthGene];
 
-			System.arraycopy(parents[posFirst].chromo, geneIndex * lengthGene, geneCopy, 0, lengthGene);
+			System.arraycopy(matingPool[posFirst].chromo, geneIndex * lengthGene, geneCopy, 0, lengthGene);
 
-			System.arraycopy(parents[posSecond].chromo, geneIndex * lengthGene, parents[posFirst].chromo,
+			// The gene of the parent2 is copied in parent1
+			System.arraycopy(matingPool[posSecond].chromo, geneIndex * lengthGene, matingPool[posFirst].chromo,
 					geneIndex * lengthGene, lengthGene);
 
-			System.arraycopy(geneCopy, 0, parents[posSecond].chromo, geneIndex * lengthGene, lengthGene);
+			// The gene of the parent1 is copied in parent2
+			System.arraycopy(geneCopy, 0, matingPool[posSecond].chromo, geneIndex * lengthGene, lengthGene);
 		}
+	}
+
+	public ArrayList<Integer> prepareSelection(double probability) {
+
+		ArrayList<Integer> parentsSelected = new ArrayList<Integer>();
+
+		for (int i = 0; i < numberOfIndividuals; i++) {
+
+			// participate with certain probability
+			if (rand.nextDouble() < probability)
+				parentsSelected.add(i);
+		}
+
+		return parentsSelected;
 	}
 
 	/**
 	 * Evaluate an individual
 	 */
-	public void evaluate(Chromosome individual) {
-
-		double f = 0;
+	public synchronized void evaluate(Chromosome individual) {
 
 		// for each gene
 		for (int l = 0; l < numLabels; l++) {
 
-			// copy gene
+			// copy the gene
 			int gene[] = new int[lengthGene];
 
 			System.arraycopy(individual.chromo, l * lengthGene, gene, 0, lengthGene);
 
-			int aritySum[] = computeAritiesSum(gene);
-
-			TreeNode tree = constructTree(gene, 0, aritySum);
-
 			double qerror = 0;
 
-			double ydev = 0;
-
 			// For each case
-			for (Instance ins : dataset) {
+			for (Instance instace : dataset) {
 
-				double predictedValue = evaluateTree(tree, ins);
+				double predictedValue = evaluate(gene, instace);
 
-				double trueValue = ins.value(labelIndices[l]);
+				double trueValue = instace.value(labelIndices[l]);
 
 				// Some functions can produce NaN or Infinite
 				if (Double.isNaN(predictedValue) || Double.isInfinite(predictedValue)) {
@@ -680,62 +902,24 @@ public class GEPMTR extends MultiLabelLearnerBase {
 				}
 
 				qerror += Math.pow(trueValue - predictedValue, 2);
-				ydev += Math.pow(trueValue - yMeans[l], 2);
 			}
 
-			// the average root mean squared error aRMSE
-			f += Math.sqrt(qerror / ydev);
+			individual.fitness[l] = Math.sqrt(qerror / dataset.numInstances());
 		}
 
-		individual.globalFitness = f / numLabels;
+		// The average root mean squared error is used as global fitness
+		// function
+		individual.globalFitness = Utils.sum(individual.fitness) / numLabels;
 	}
 
-	// Return the index of the best and worst individual in the population
-	public int[] doEvaluation(Chromosome[] p) {
-
-		double bestFitnessPopulation = Double.MAX_VALUE;
-
-		double worstFitnessPopulation = Double.MIN_VALUE;
-
-		// bestWorst[0]= index of the best individual
-		// bestWorst[1]= index of the worst individual
-		int bestWorst[] = new int[2];
-
-		for (int i = 0; i < numberOfIndividuals; i++) {
-
-			evaluate(p[i]);
-
-			double fitness = p[i].globalFitness;
-
-			if (fitness < bestFitnessPopulation) {
-				bestFitnessPopulation = fitness;
-				bestWorst[0] = i;
-			}
-
-			if (fitness > worstFitnessPopulation) {
-				worstFitnessPopulation = fitness;
-				bestWorst[1] = i;
-			}
-		}
-
-		return bestWorst;
-	}
-
-	// Return the index of the best and worst individual in the population
-	public int[] doParallelEvaluation(Chromosome[] p) {
-
-		double bestFitnessPopulation = Double.MAX_VALUE;
-
-		double worstFitnessPopulation = Double.MIN_VALUE;
-
-		// bestWorst[0]= index of the best individual
-		// bestWorst[1]= index of the worst individual
-		int bestWorst[] = new int[2];
+	// Evaluate the population of individual passed as argument. The evaluation
+	// is done in parallel mode to speed up the evaluation process
+	public void doEvaluation(Chromosome[] p) {
 
 		ExecutorService threadExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-		for (Chromosome cro : p) {
-			threadExecutor.execute(new evaluationThread(cro));
+		for (Chromosome cromo : p) {
+			threadExecutor.execute(new EvaluationThread(cromo));
 		}
 
 		threadExecutor.shutdown();
@@ -744,206 +928,211 @@ public class GEPMTR extends MultiLabelLearnerBase {
 			if (!threadExecutor.awaitTermination(30, TimeUnit.DAYS))
 				System.out.println("Threadpool timeout occurred");
 		} catch (InterruptedException ie) {
-			System.out.println("Threadpool prematurely terminated due to interruption in thread that created pool");
+			System.out.println("Threadpool prematurely terminated due to interruption in thread");
+		}
+	}
+
+	public int worstIndividual(Chromosome[] p) {
+
+		double worstFitnessPopulation = Double.MIN_VALUE;
+
+		int worst = 0;
+
+		// The worst individual are determined
+		for (int i = 0; i < numberOfIndividuals; i++) {
+
+			double fitness = p[i].globalFitness;
+
+			if (fitness > worstFitnessPopulation) {
+				worstFitnessPopulation = fitness;
+				worst = i;
+			}
 		}
 
-		// The best and worst individuals are determined
+		return worst;
+	}
+
+	public int bestIndividual(Chromosome[] p) {
+
+		double bestFitnessPopulation = Double.MAX_VALUE;
+
+		int best = 0;
+		// The best individuals are determined
 		for (int i = 0; i < numberOfIndividuals; i++) {
 
 			double fitness = p[i].globalFitness;
 
 			if (fitness < bestFitnessPopulation) {
 				bestFitnessPopulation = fitness;
-				bestWorst[0] = i;
-			}
-
-			if (fitness > worstFitnessPopulation) {
-				worstFitnessPopulation = fitness;
-				bestWorst[1] = i;
+				best = i;
 			}
 		}
 
-		return bestWorst;
+		return best;
 	}
 
-	// The Expression Tree represented by the gene is evaluated by an inOrder
-	// search.
-	public double evaluateTree(TreeNode tree, Instance instance) {
+	public Chromosome createBestIndividual(Chromosome p[]) {
 
-		if (tree.isLeaf) {
-			return instance.value(tree.index);
-		}
+		// A chromosome is created from the best genes found in the current
+		// population
 
-		if (!tree.isLeaf) {
+		Chromosome c = new Chromosome();
 
-			double valueLeft = evaluateTree(tree.left, instance);
+		c.chromo = new int[lengthGene * numLabels];
+		c.fitness = new double[numLabels];
 
-			switch (F[tree.index]) {
-
-			case "+":
-				return valueLeft + evaluateTree(tree.right, instance);
-
-			case "-":
-				return valueLeft - evaluateTree(tree.right, instance);
-
-			case "/":
-
-				double valueRight = evaluateTree(tree.right, instance);
-
-				// to avoid division by zero
-				if (valueRight == 0)
-					return 0;
-
-				return valueLeft / valueRight;
-
-			case "*":
-				return valueLeft * evaluateTree(tree.right, instance);
-
-			case "log":
-
-				if (valueLeft == 0)
-					valueLeft = 1e-6;
-
-				// The valueleft cannot be negative
-				return Math.log10(Math.abs(valueLeft));
-
-			case "sroot":
-				// The valueleft cannot be negative
-				return Math.sqrt(Math.abs(valueLeft));
-
-			case "sin":
-				return Math.sin(valueLeft);
-
-			case "cos":
-				return Math.cos(valueLeft);
-
-			}
-		}
-
-		return 0;
-	}
-
-	public int[] computeAritiesSum(int[] gene) {
-
-		// compute the sum of arities
-
-		int[] aritySum = new int[h];
-
-		int sum = 0;
-
-		for (int i = 0; i < h; i++) {
-
-			aritySum[i] = sum;
-
-			if (gene[i] < F.length)
-				sum += arities[gene[i]];
-		}
-
-		return aritySum;
-	}
-
-	/**
-	 * @param gene
-	 *            The gene
-	 * @param pos
-	 *            The position that is being analysed
-	 * 
-	 */
-	public TreeNode constructTree(int[] gene, int pos, int[] aritySum) {
-
-		// Construct the tree
-		TreeNode tree = new TreeNode();
-
-		// verify that it is part of the head
-		if (pos < h) {
-			// it is a function
-			if (gene[pos] < F.length) {
-				tree.isLeaf = false;
-				tree.index = gene[pos];
-			} else // is a terminal symbol
-			{
-				tree.isLeaf = true;
-				tree.index = gene[pos] - F.length;
-			}
-		} else // it is part of the tail
-		{
-			tree.isLeaf = true;
-			tree.index = gene[pos];
-		}
-
-		if (!tree.isLeaf) {
-
-			int currentArity = arities[tree.index];
-
-			// The position of the argument for this function is computed. The
-			// argument for the current function are in
-			// the range [aritySum+1...aritySum+currentArity]
-			int posOne = aritySum[pos] + 1;
-
-			tree.left = constructTree(gene, posOne, aritySum);
-
-			if (currentArity == 2) {
-				int posTwo = aritySum[pos] + 2;
-
-				tree.right = constructTree(gene, posTwo, aritySum);
-			}
-
-		}
-
-		return tree;
-	}
-
-	// Print the tree with the Breadth First Search algorithm
-	public void printTree(TreeNode tree) {
-
-		Queue<TreeNode> queue = new LinkedList<TreeNode>();
-
-		queue.add(tree);
-
-		StringBuilder str = new StringBuilder();
-
-		while (!queue.isEmpty()) {
-
-			TreeNode nodeT = queue.poll();
-
-			// It is head
-			if (nodeT.isLeaf)
-				str.append(" x" + nodeT.index);
-			else {
-				str.append(" " + F[nodeT.index]);
-			}
-
-			if (nodeT.left != null)
-				queue.add(nodeT.left);
-			if (nodeT.right != null)
-				queue.add(nodeT.right);
-		}
-
-		System.out.println(str);
-	}
-
-	/**
-	 * Evaluate an individual
-	 */
-	public void printTrees(Chromosome individual) {
-
-		// for each gene
+		// For each label, determine the best gene
 		for (int l = 0; l < numLabels; l++) {
 
-			System.out.println("Gene " + l + ":");
+			int bestIndex = 0;
+			double bestError = Double.MAX_VALUE;
 
-			// copy gene
-			int gene[] = new int[lengthGene];
-			System.arraycopy(individual.chromo, l * lengthGene, gene, 0, lengthGene);
+			for (int i = 0; i < numberOfIndividuals; i++) {
 
-			int[] aritySum = computeAritiesSum(gene);
+				Chromosome cT = p[i];
 
-			TreeNode tree = constructTree(gene, 0, aritySum);
+				if (cT.fitness[l] < bestError) {
+					bestError = cT.fitness[l];
+					bestIndex = i;
+				}
+			}
 
-			printTree(tree);
+			// Copy the gene of the best individual
+			System.arraycopy(p[bestIndex].chromo, l * lengthGene, c.chromo, l * lengthGene, lengthGene);
 
+			c.fitness[l] = p[bestIndex].fitness[l];
 		}
 
+		c.globalFitness = Utils.sum(c.fitness) / numLabels;
+
+		return c;
+	}
+
+	// This function evaluates the gene (expression in polish notation) with
+	// the instance
+	public synchronized double evaluate(int gene[], Instance instance) {
+
+		try {
+
+			int eL = computeEffectiveGeneLength(gene);
+
+			Stack<Double> stack = new Stack<Double>();
+
+			for (int index = eL - 1; index >= 0; index--) {
+
+				// it is head
+				if (index < h) {
+
+					// if it is a function
+					if (gene[index] < F.length) {
+
+						switch (F[gene[index]]) {
+
+						case "+":
+							stack.push(stack.pop() + stack.pop());
+							break;
+
+						case "-":
+							stack.push(stack.pop() - stack.pop());
+							break;
+
+						case "/":
+
+							double v1 = stack.pop();
+							double v2 = stack.pop();
+
+							// to avoid division by zero
+							if (v2 == 0)
+								stack.push(0.0);
+							else
+								stack.push(v1 / v2);
+
+							break;
+
+						case "*":
+							stack.push(stack.pop() * stack.pop());
+							break;
+
+						case "log":
+
+							double v = stack.pop();
+
+							if (v == 0)
+								v = 1e-6;
+
+							// The value cannot be negative
+							stack.push(Math.log10(Math.abs(v)));
+							break;
+
+						case "sroot":
+							// The value cannot be negative
+							stack.push(Math.sqrt(Math.abs(stack.pop())));
+							break;
+
+						case "sin":
+							stack.push(Math.sin(stack.pop()));
+							break;
+
+						case "cos":
+							stack.push(Math.cos(stack.pop()));
+							break;
+						}
+					} else // it is a terminal
+						stack.push(instance.value(gene[index] - F.length));
+
+				} else // it is tail, therefore it is always a terminal
+				{
+					stack.push(instance.value(gene[index]));
+				}
+			}
+
+			return stack.pop();
+
+		} catch (Exception e) {
+			System.err.println("Malformer expression");
+		}
+
+		return Double.NaN;
+	}
+
+	/**
+	 * This function computes the effective length of the gene, i.e. the code
+	 * region of the gene.
+	 * 
+	 * @param gene
+	 *            The gene
+	 * @return The effective length of the gene
+	 */
+	public int computeEffectiveGeneLength(int[] gene) {
+
+		int len = 0;
+		int count = 0;
+
+		int index = 0;
+
+		while (count >= 0) {
+
+			len++;
+
+			// it corresponds to the head of the gene
+			if (index < h) {
+
+				// it is a function
+				if (gene[index] < F.length)
+					count = count - 1 + arities[gene[index]];
+				else // it is a terminal
+					count--;
+
+			} else // it correspond to the tail of the gene
+			{
+				// it is always a terminal
+				count--;
+			}
+
+			index++;
+		}
+
+		return len;
 	}
 
 	/**
@@ -992,117 +1181,29 @@ public class GEPMTR extends MultiLabelLearnerBase {
 	// but ensures that best individual passes to the next generation any time.
 	private void doReplacement() {
 
-		// If best individual in population set is better that best individual
-		// in parents set, remove worst individual in parents set and add the
-		// best to parents set
+		Chromosome bestOld = createBestIndividual(population);
 
-		// To do a copy of the best in the new population
-		if (population[bestparent].globalFitness < parents[bestOffspring].globalFitness) {
-			parents[worstOffspring] = population[bestparent].copy();
-			bestparent = worstOffspring;
+		int worstIndex = worstIndividual(matingPool);
+
+		// Con esto se garantiza introducir los mejores genes encontrados en la
+		// poblacion anterior hacia la nueva generacion
+		if (bestOld.globalFitness < matingPool[worstIndex].globalFitness) {
+
+			matingPool[worstIndex] = bestOld.copy();
+		}
+
+		// keep in bestChromosome the best chromosome found so far
+		if (bestChromosome == null) {
+			bestChromosome = bestOld.copy();
 		} else {
-			bestparent = bestOffspring;
+			// compare the global fitness
+			if (bestOld.globalFitness < bestChromosome.globalFitness)
+				bestChromosome = bestOld.copy();
 		}
 
-		// the generation is replaced is replaced by the new one
-		population = parents;
-	}
-
-	public Chromosome getBestSolution() {
-		return population[bestparent];
-	}
-
-	@Override
-	protected void buildInternal(MultiLabelInstances trainingSet) throws Exception {
-		
-		rand = new Random();
-		
-		this.dataset = trainingSet.getDataSet();
-
-		// Computing the mean value of each target variable
-		yMeans = new double[numLabels];
-
-		// for each label
-		for (int l = 0; l < numLabels; l++) {
-			yMeans[l] = dataset.meanOrMode(labelIndices[l]);
-		}
-
-		// Create the initial population
-		createInitialPopulation();
-
-		// evaluate the initial population
-		bestparent = doParallelEvaluation(population)[0];
-
-		// do generations
-		int iter = 0;
-
-		while (iter < numberGenerations) {
-
-			doSelection();
-			doMutation();
-			doISTransposition();
-			doRISTransposition();
-
-			// Gene Transposition operator can only be used in multi-genic
-			// chromosomes
-			if (numLabels > 1)
-				doGeneTransposition();
-
-			doOnePointRecombination();
-			doTwoPointRecombination();
-
-			// Gene Recombination operator can only be used in multi-genic
-			// chromosomes
-			if (numLabels > 1)
-				doGeneRecombination();
-
-			// The best and worst individuals of the new population are
-			// retrieved
-			int[] arr = doParallelEvaluation(parents);
-
-			bestOffspring = arr[0];
-			worstOffspring = arr[1];
-
-			doReplacement();
-
-			iter++;
-		}
-
-		if (getDebug()) {
-			// printing the best regressor found
-			printTrees(population[bestparent]);
-
-			System.out.println("Fitness: " + population[bestparent].globalFitness);
-		}
-	}
-
-	@Override
-	protected MultiLabelOutput makePredictionInternal(Instance instance) throws Exception, InvalidDataException {
-
-		// the values predicted
-		double[] finalPredictions = new double[numLabels];
-
-		Chromosome bestEstimator = population[bestparent];
-
-		// for each gene
-		for (int l = 0; l < numLabels; l++) {
-
-			// copy gene
-			int gene[] = new int[lengthGene];
-
-			System.arraycopy(bestEstimator.chromo, l * lengthGene, gene, 0, lengthGene);
-
-			int aritySum[] = computeAritiesSum(gene);
-
-			TreeNode tree = constructTree(gene, 0, aritySum);
-
-			finalPredictions[l] = evaluateTree(tree, instance);
-
-		}
-
-		MultiLabelOutput mlo = new MultiLabelOutput(finalPredictions, true);
-		return mlo;
-
+		// the generation is replaced by the new one
+		population = matingPool;
+		matingPool = null;
 	}
 
 	@Override
@@ -1114,10 +1215,11 @@ public class GEPMTR extends MultiLabelLearnerBase {
 	// -------------------------------------------- Evaluation Thread
 	/////////////////////////////////////////////////////////////////
 
-	private class evaluationThread extends Thread {
+	private class EvaluationThread extends Thread {
+
 		private Chromosome ind;
 
-		public evaluationThread(Chromosome ind) {
+		public EvaluationThread(Chromosome ind) {
 			this.ind = ind;
 		}
 
@@ -1146,5 +1248,35 @@ public class GEPMTR extends MultiLabelLearnerBase {
 		str.append("Probability of Gene Recombination:" + pgr).append("\n");
 
 		return str.toString();
+	}
+
+	// This method compute the similarity that exists between genes of two
+	// chromosomes
+	public double similarity(Chromosome c1, Chromosome c2) {
+
+		int total = 0;
+
+		for (int i = 0; i < numLabels; i++) {
+
+			int[] gene1 = new int[lengthGene];
+			System.arraycopy(c1.chromo, i * lengthGene, gene1, 0, lengthGene);
+
+			for (int j = 0; j < numLabels; j++) {
+
+				int hamming = 0;
+
+				int[] gene2 = new int[lengthGene];
+				System.arraycopy(c2.chromo, j * lengthGene, gene2, 0, lengthGene);
+
+				// count the different elements. Hamming distance
+				for (int k = 0; k < lengthGene; k++) {
+					if (gene1[k] != gene2[k])
+						hamming++;
+				}
+
+				total += hamming;
+			}
+		}		
+		return 1 - (total / (double) (numLabels * numLabels * lengthGene));
 	}
 }

@@ -4,7 +4,7 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import gep.GEPMTRv2;
+import gep.GEPMTR;
 import mulan.data.MultiLabelInstances;
 import mulan.evaluation.Evaluator;
 import mulan.evaluation.MultipleEvaluation;
@@ -49,7 +49,7 @@ public class MyExperiment_GEPMTR {
 					for (int execution = 0; execution < numberOfExecutions; execution++) {
 
 						// Constructing the classifier
-						GEPMTRv2 gep = new GEPMTRv2(h, numberOfIndividuals,numberOfGenerations);
+						GEPMTR gep = new GEPMTR(h, numberOfIndividuals,numberOfGenerations);
 
 						//GEPMTLR learner= new GEPMTLR(h, numberOfIndividuals, numberOfGenerations);
 						

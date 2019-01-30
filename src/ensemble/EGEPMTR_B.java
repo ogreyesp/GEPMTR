@@ -2,7 +2,6 @@ package ensemble;
 import java.util.Random;
 
 import gep.GEPMTR;
-import gep.GEPMTRv2;
 import mulan.classifier.InvalidDataException;
 import mulan.classifier.MultiLabelLearnerBase;
 import mulan.classifier.MultiLabelOutput;
@@ -31,7 +30,7 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 	/**
 	 * Stores the GEPMTR models.
 	 */
-	private GEPMTRv2[] ensemble;
+	private GEPMTR[] ensemble;
 
 	/**
 	 * Three types of sampling.
@@ -88,7 +87,7 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 		this.sampling = sampling;
 		this.numOfModels = numOfModels;
 
-		ensemble = new GEPMTRv2[numOfModels];
+		ensemble = new GEPMTR[numOfModels];
 	}
 	
 	public EGEPMTR_B(int h, int numberOfIndividuals, int numberGenerations, int numOfModels)
@@ -101,7 +100,7 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 		this.sampling = SamplingMethod.WithReplacement;
 		this.numOfModels = numOfModels;
 
-		ensemble = new GEPMTRv2[numOfModels];
+		ensemble = new GEPMTR[numOfModels];
 	}
 	
 	public void setSeed(long seed){
@@ -143,7 +142,7 @@ public class EGEPMTR_B extends MultiLabelLearnerBase {
 				sampledTrainingSet = mlTrainSet;
 			}
 
-			ensemble[i] = new GEPMTRv2(h, numberOfIndividuals, numberOfGenerations, seed*i);
+			ensemble[i] = new GEPMTR(h, numberOfIndividuals, numberOfGenerations, seed*i);
 
 			ensemble[i].build(sampledTrainingSet);
 		}

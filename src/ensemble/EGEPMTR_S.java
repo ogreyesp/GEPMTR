@@ -9,7 +9,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import gep.GEPMTRv2;
+import gep.GEPMTR;
 import mulan.classifier.InvalidDataException;
 import mulan.classifier.MultiLabelLearnerBase;
 import mulan.classifier.MultiLabelOutput;
@@ -67,10 +67,10 @@ public class EGEPMTR_S extends MultiLabelLearnerBase {
 	int [] votesPerLabel;
 
 	// Full targets regressor
-	public GEPMTRv2 fullTargetsRegressor;
+	public GEPMTR fullTargetsRegressor;
 	
 	// Rest of the ensemble
-	public GEPMTRv2[] ensemble;
+	public GEPMTR[] ensemble;
 
 	
 	/**
@@ -113,14 +113,14 @@ public class EGEPMTR_S extends MultiLabelLearnerBase {
 		
 		subsetsMatrix = new byte[numberOfModels-1][numLabels];
 		
-		fullTargetsRegressor = new GEPMTRv2(h, numberGenerations, numberOfIndividuals, seed);
+		fullTargetsRegressor = new GEPMTR(h, numberGenerations, numberOfIndividuals, seed);
 		fullTargetsRegressor.build(trainingSet);
 		
 		for(int i=0; i<numLabels; i++){
 			votesPerLabel[i] = 1;
 		}
 		
-		ensemble = new GEPMTRv2[numberOfModels-1];
+		ensemble = new GEPMTR[numberOfModels-1];
 		for(int n=0; n<(numberOfModels-1); n++){
 			//Select random subset
 			byte [] subset = selectRandomSubset(k, numLabels);
@@ -134,7 +134,7 @@ public class EGEPMTR_S extends MultiLabelLearnerBase {
 			}
 			
 			//Generate ensemble member
-			ensemble[n] = new GEPMTRv2(h, numberGenerations, numberOfIndividuals, seed*n);
+			ensemble[n] = new GEPMTR(h, numberGenerations, numberOfIndividuals, seed*n);
 			ensemble[n].build(transformInstances(trainingSet, subsetsMatrix[n]));
 		}
 	}
