@@ -11,7 +11,7 @@ The distribution in packages of the source code is as follows:
 * utils: classes with many utilities.
 
 More information about these algorithms can be find in the following article:
-> J. M. Moyano, O. Reyes, H. M. Fardoun, and S. Ventura. "Performing Multi-Target Regression via GEP-based Ensemble Models". Submitted to International Journal of Computational Intelligence Systems. (2019).
+> J. M. Moyano, O. Reyes, H. M. Fardoun, and S. Ventura. "Performing Multi-Target Regression via GEP-based Ensemble Models".
 
 
 ### References
